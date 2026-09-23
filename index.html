@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CMMA 1000KM / 15HR — Motorcycle Ride Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--bg:#080d15;--panel:#101827;--card:#151f30;--line:#29374d;--text:#f3f7fc;--muted:#9eacc0;--cyan:#57c7ff;--yellow:#ffd166;--green:#67d391;--red:#ff7070;}
+*{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at top,#132039,#080d15 55%);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1400px;margin:auto;padding:16px} header{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+h1{font-size:clamp(22px,3.5vw,36px);margin:0} .sub{color:var(--muted);font-size:13px}
+.badge{padding:7px 10px;border:1px solid #31516c;border-radius:999px;color:var(--cyan);background:#0d1a29;font-weight:700}
+.metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin:14px 0}
+.metric{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:11px} .metric .v{font-size:20px;font-weight:850} .metric .l{font-size:11px;color:var(--muted);margin-top:3px}
+.layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(330px,.75fr);gap:12px}
+.panel{background:rgba(16,24,39,.96);border:1px solid var(--line);border-radius:15px;overflow:hidden}
+.ph{padding:11px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;align-items:center}
+#map{height:650px} .maptools{display:flex;gap:7px;flex-wrap:wrap;padding:9px 12px;border-bottom:1px solid var(--line)}
+button{border:1px solid var(--line);background:#152235;color:var(--text);padding:9px 11px;border-radius:9px;cursor:pointer;font-weight:650}
+button:hover{border-color:#547796} button.active{border-color:var(--cyan);color:var(--cyan)}
+.timeline{max-height:610px;overflow:auto;padding:7px}
+.item{width:100%;display:block;text-align:left;border:1px solid transparent;background:transparent;color:var(--text);padding:10px;border-radius:10px;cursor:pointer}
+.item.active{background:#1a2a40;border-color:#385879} .item .top{display:flex;gap:8px;justify-content:space-between} .time{color:var(--cyan);font-weight:800} .km{color:var(--yellow);font-size:12px}
+.name{font-weight:750;margin-top:2px} .road,.note{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35}
+.progress{height:8px;background:#202c3e;border-radius:99px;overflow:hidden;margin:8px 0} .bar{height:100%;width:0;background:var(--cyan);transition:width .25s}
+.next{padding:12px 14px;border-bottom:1px solid var(--line)} .next strong{font-size:16px} .next small{color:var(--muted)}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:10px} .card{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:10px} .card h3{font-size:12px;margin:0 0 5px} .card p{margin:0;color:var(--muted);font-size:11px;line-height:1.45}
+.fuelrow{padding:10px 13px;border-top:1px solid var(--line);font-size:12px} .fuelrow b{display:block;color:var(--yellow)} .fine{color:var(--muted);font-size:10px;line-height:1.45;padding:10px 13px}
+.leaflet-popup-content{color:#101722;max-width:290px} .leaflet-popup-content b{font-size:14px}
+@media(max-width:1050px){.metrics{grid-template-columns:repeat(3,1fr)}.layout{grid-template-columns:1fr}#map{height:560px}.timeline{max-height:500px}}
+@media(max-width:560px){.wrap{padding:10px}.metrics{grid-template-columns:repeat(2,1fr)}#map{height:460px}.cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<div><h1>🏍️ CMMA 1000KM / 15HR</h1><div class="sub">Saturday, October 3, 2026 · Whitby loop · ride command dashboard</div></div>
+<div class="badge" id="status">READY TO RIDE</div>
+</header>
+
+<div class="metrics">
+<div class="metric"><div class="v" id="mKm">0 / 1,023 km</div><div class="l">ROUTE PROGRESS</div></div>
+<div class="metric"><div class="v" id="mTime">05:00 AM</div><div class="l">SIMULATED TIME</div></div>
+<div class="metric"><div class="v" id="mElapsed">0:00</div><div class="l">RIDE ELAPSED</div></div>
+<div class="metric"><div class="v" id="mETA">05:42 PM</div><div class="l">PLANNED FINISH</div></div>
+<div class="metric"><div class="v" id="mBuffer">2h 18m</div><div class="l">15-HR BUFFER</div></div>
+<div class="metric"><div class="v" id="mNext">—</div><div class="l">NEXT CHECKPOINT</div></div>
+</div>
+
+<div class="layout">
+<section class="panel">
+<div class="ph"><b>LIVE ROUTE MAP</b><span class="sub" id="mapLabel">Whitby start</span></div>
+<div class="maptools">
+<button id="play">▶ Start ride simulation</button>
+<button id="pause">⏸ Pause</button>
+<button id="reset">↺ Reset</button>
+<button id="fit">⌖ Fit route</button>
+</div>
+<div id="map"></div>
+<div class="fine">Map line connects the document's named public checkpoints and is schematic, not a turn-by-turn GPS track. The uploaded plan does not provide an actual GPS file or exact coordinates for every route point.</div>
+</section>
+
+<section class="panel">
+<div class="ph"><b>RIDE TIMELINE</b><span class="sub" id="stage">START</span></div>
+<div class="next"><small>NEXT</small><br><strong id="nextName">East Ferris (Corbeil)</strong><br><small id="nextRoad">Highway 94 E · 287 km</small></div>
+<div style="padding:0 12px"><div class="progress"><div class="bar" id="bar"></div></div></div>
+<div id="timeline" class="timeline"></div>
+<div class="ph"><b>FUEL WINDOWS</b><span class="sub">from ride plan</span></div>
+<div id="fuel"></div>
+</section>
+</div>
+
+<div class="cards">
+<div class="card"><h3>🛣️ ROUTE CHARACTER</h3><p>All-paved loop. The plan specifically uses Highway 94 through Corbeil and County Road 61 / Haley Road to bypass the North Bay and Renfrew urban centres.</p></div>
+<div class="card"><h3>⛽ FUEL DISCIPLINE</h3><p>Three operational fuel intervals are listed in the source plan, with the second window spanning Mattawa to Barry's Bay and the third at Dwight.</p></div>
+<div class="card"><h3>⚠️ EXECUTION BUFFER</h3><p>Documented active driving time is 12h 42m against a 15-hour rule, leaving a stated 2h 18m structural buffer for fuel and rest stops.</p></div>
+<div class="card"><h3>🏁 FINISH</h3><p>05:42 PM · 1,023 km · return to Baldwin Street South in Whitby, completing the loop at the stated start point.</p></div>
+</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const stops = [{"time": "05:00 AM", "km": 0, "name": "Whitby Base / Start", "place": "5899 Baldwin St S, Whitby, ON", "road": "ON-12 N", "type": "start", "note": "Kickstands up at the Petro-Canada base station.", "lat": 43.8975, "lon": -78.9429}, {"time": "06:20 AM", "km": 145, "name": "Washago", "place": "Washago, ON", "road": "Highway 12 N \u2192 Highway 11 N", "type": "route", "note": "Intercept Highway 11 North; continue through Gravenhurst and Bracebridge.", "lat": 44.777, "lon": -79.334}, {"time": "08:05 AM", "km": 287, "name": "East Ferris (Corbeil)", "place": "Corbeil, ON", "road": "Highway 94 E", "type": "checkpoint", "note": "Leave Highway 11 and use Highway 94 East to bypass North Bay.", "lat": 46.226, "lon": -79.298}, {"time": "08:25 AM", "km": 305, "name": "Highway 17 Eastbound", "place": "Highway 17 / Mattawa corridor", "road": "Trans-Canada Highway 17 E", "type": "route", "note": "Merge onto Highway 17 East toward Mattawa and Deep River.", "lat": 46.317, "lon": -78.707}, {"time": "10:42 AM", "km": 528, "name": "Rosebank Bypass", "place": "Rosebank / Haley Road corridor", "road": "Renfrew County Road 61 (Haley Road)", "type": "checkpoint", "note": "Leave Highway 17 and run south on County Road 61 to Highway 60.", "lat": 45.41, "lon": -76.82}, {"time": "11:00 AM", "km": 550, "name": "Highway 60 Pivot", "place": "Madawaska Valley", "road": "Highway 60 W", "type": "route", "note": "Turn west onto Highway 60.", "lat": 45.46, "lon": -77.68}, {"time": "11:50 AM", "km": 619, "name": "Barry's Bay", "place": "Barry's Bay, ON", "road": "Highway 60 W", "type": "checkpoint", "note": "Pass through Barry's Bay on Highway 60.", "lat": 45.49, "lon": -77.68}, {"time": "01:25 PM", "km": 754, "name": "Dwight Junction", "place": "Dwight, ON", "road": "Highway 35 S", "type": "fuel", "note": "Critical junction; document identifies Dwight Shell as a 24-hour fuel option. Turn south onto Highway 35.", "lat": 45.322, "lon": -79.028}, {"time": "02:20 PM", "km": 819, "name": "Haliburton / Tory Hill", "place": "Tory Hill, ON", "road": "Highway 118 E", "type": "checkpoint", "note": "Leave Highway 35 and follow Highway 118 East through Haliburton toward Tory Hill.", "lat": 45.016, "lon": -78.5}, {"time": "02:50 PM", "km": 913, "name": "Gooderham \u2192 Bridgenorth", "place": "Gooderham / Bridgenorth corridor", "road": "County Road 503 SW", "type": "checkpoint", "note": "Use County Road 503 Southwest through Gooderham toward Bridgenorth.", "lat": 44.63, "lon": -78.72}, {"time": "04:15 PM", "km": 998, "name": "Southern Kawartha Return", "place": "Omemee \u2192 Bethany \u2192 Port Perry", "road": "Highway 7 \u2192 Highway 7A", "type": "checkpoint", "note": "Track south through Omemee, Bethany and along Lake Scugog into Port Perry.", "lat": 44.31, "lon": -78.9}, {"time": "05:42 PM", "km": 1023, "name": "Whitby Termination", "place": "Baldwin Street South, Whitby, ON", "road": "Baldwin St S", "type": "finish", "note": "Complete the 1,023 km paved loop at the starting point.", "lat": 43.8975, "lon": -78.9429}];
+const fuel = [["07:45\u201308:15 AM", "Huntsville / Highway 11 corridor", "~245\u2013260 km", "Esso / Shell 24h; Ultramar 5:00 AM\u201311:00 PM"], ["11:15 AM\u201312:15 PM", "Mattawa \u2192 Barry's Bay segment", "~530\u2013615 km total", "MacEwen Mattawa 5:30 AM\u201311:00 PM; Waypoint Convenience / Esso Mattawa 5:30 AM\u201311:00 PM; MacEwen Barry's Bay 5:30 AM\u201311:00 PM; Barry's Bay Shell 5:00 AM\u20138:00 PM"], ["01:25\u201302:20 PM", "Dwight / Kawartha entry", "~755\u2013820 km", "Dwight Shell \u2014 24 hours"]];
+
+const map=L.map('map',{scrollWheelZoom:true}).setView([45.1,-78.2],7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap contributors'}).addTo(map);
+const latlngs=stops.map(s=>[s.lat,s.lon]);
+const route=L.polyline(latlngs,{color:'#57c7ff',weight:5,opacity:.9,dashArray:'12 8'}).addTo(map);
+const rider=L.circleMarker(latlngs[0],{radius:9,color:'#fff',weight:2,fillColor:'#57c7ff',fillOpacity:1}).addTo(map);
+const markers=[];
+const tl=document.getElementById('timeline');
+
+stops.forEach((s,i)=>{
+ const m=L.marker([s.lat,s.lon]).addTo(map);
+ m.bindPopup(`<b>${s.time} — ${s.name}</b><br><b>${s.km} km</b><br>${s.road}<br><br>${s.note}`);
+ markers.push(m);
+ const b=document.createElement('button'); b.className='item'; b.type='button';
+ b.innerHTML=`<div class="top"><span class="time">${s.time}</span><span class="km">${s.km} km</span></div><div class="name">${s.name}</div><div class="road">${s.road}</div><div class="note">${s.note}</div>`;
+ b.onclick=()=>select(i,true); tl.appendChild(b);
+});
+map.fitBounds(route.getBounds(),{padding:[25,25]});
+
+function select(i,fly){
+ document.querySelectorAll('.item').forEach((x,j)=>x.classList.toggle('active',j===i));
+ const s=stops[i];
+ rider.setLatLng([s.lat,s.lon]);
+ markers[i].openPopup();
+ if(fly) map.flyTo([s.lat,s.lon],9,{duration:.55});
+ const pct=(s.km/1023)*100;
+ document.getElementById('bar').style.width=pct+'%';
+ document.getElementById('mKm').textContent=s.km.toLocaleString()+' / 1,023 km';
+ document.getElementById('mTime').textContent=s.time;
+ document.getElementById('mapLabel').textContent=s.name;
+ document.getElementById('stage').textContent=s.type.toUpperCase();
+ const next=stops[i+1];
+ document.getElementById('nextName').textContent=next?next.name:'FINISH — WHITBY';
+ document.getElementById('nextRoad').textContent=next?`${next.road} · ${next.km} km`:'1,023 km complete';
+ document.getElementById('mNext').textContent=next?next.name:'FINISH';
+ const mins=Math.round((s.km/1023)*(12*60+42));
+ const hh=Math.floor(mins/60), mm=String(mins%60).padStart(2,'0');
+ document.getElementById('mElapsed').textContent=`${hh}:${mm}`;
+ document.getElementById('status').textContent=i===0?'READY TO RIDE':(i===stops.length-1?'RIDE COMPLETE':'EN ROUTE');
+}
+let idx=0,timer=null;
+document.getElementById('play').onclick=()=>{
+ if(timer) return;
+ document.getElementById('status').textContent='SIMULATION RUNNING';
+ timer=setInterval(()=>{
+   if(idx<stops.length-1){idx++;select(idx,true);}
+   else{clearInterval(timer);timer=null;document.getElementById('status').textContent='RIDE COMPLETE';}
+ },1600);
+};
+document.getElementById('pause').onclick=()=>{if(timer){clearInterval(timer);timer=null;document.getElementById('status').textContent='PAUSED';}};
+document.getElementById('reset').onclick=()=>{if(timer){clearInterval(timer);timer=null;}idx=0;select(0,true);document.getElementById('status').textContent='READY TO RIDE';};
+document.getElementById('fit').onclick=()=>map.fitBounds(route.getBounds(),{padding:[25,25]});
+
+document.getElementById('fuel').innerHTML=fuel.map(f=>`<div class="fuelrow"><b>${f[0]} · ${f[1]}</b><div>${f[2]}</div><div class="note">${f[3]}</div></div>`).join('');
+select(0,false);
+</script>
+</body></html>
